@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Maze Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #debug {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: monospace;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div id="debug"></div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+let camera, scene, renderer, controls;
+let soldier, mixer, currentAction, idleAction, runAction;
+let keyboard = {};
+const MAZE_SIZE = 16;
+const CELL_SIZE = 4;
+const WALL_HEIGHT = 4;
+const walls = [];
+const collisionBoxes = [];
+
+init();
+animate();
+
+function init() {
+    // Scene setup
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444));
+    const light = new THREE.DirectionalLight(0xffffff);
+    light.position.set(0, 20, 0);
+    scene.add(light);
+
+    // Controls
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    camera.position.set(0, 30, 30);
+    controls.update();
+
+    // Generate maze
+    createMaze();
+    createFloor();
+
+    // Load soldier
+    const loader = new THREE.GLTFLoader();
+    loader.load('https://threejs.org/examples/models/gltf/Soldier.glb', (gltf) => {
+        soldier = gltf.scene;
+        soldier.scale.set(2, 2, 2);
+        soldier.position.set(MAZE_SIZE * CELL_SIZE / 2, 0, MAZE_SIZE * CELL_SIZE / 2);
+        scene.add(soldier);
+
+        // Setup animations
+        mixer = new THREE.AnimationMixer(soldier);
+        idleAction = mixer.clipAction(gltf.animations[0]);
+        runAction = mixer.clipAction(gltf.animations[3]);
+        idleAction.play();
+        currentAction = idleAction;
+    });
+
+    // Event listeners
+    window.addEventListener('resize', onWindowResize);
+    window.addEventListener('keydown', e => keyboard[e.key.toLowerCase()] = true);
+    window.addEventListener('keyup', e => keyboard[e.key.toLowerCase()] = false);
+}
+
+function createMaze() {
+    const wallTexture = createWallTexture();
+    
+    for(let x = 0; x < MAZE_SIZE; x++) {
+        for(let z = 0; z < MAZE_SIZE; z++) {
+            if(isWall(x, z)) {
+                const geometry = new THREE.BoxGeometry(CELL_SIZE, WALL_HEIGHT, CELL_SIZE);
+                const material = new THREE.MeshPhongMaterial({ map: wallTexture });
+                const wall = new THREE.Mesh(geometry, material);
+                wall.position.set(x * CELL_SIZE, WALL_HEIGHT/2, z * CELL_SIZE);
+                scene.add(wall);
+                
+                // Collision box
+                const box = new THREE.Box3().setFromObject(wall);
+                collisionBoxes.push(box);
+            }
+        }
+    }
+}
+
+function isWall(x, z) {
+    // Outer walls
+    if(x === 0 || x === MAZE_SIZE-1 || z === 0 || z === MAZE_SIZE-1) return true;
+    // Central open area
+    if(x >= 6 && x <= 9 && z >= 6 && z <= 9) return false;
+    // Random walls (15% chance)
+    return Math.random() < 0.15;
+}
+
+function createFloor() {
+    const texture = createFloorTexture();
+    const geometry = new THREE.PlaneGeometry(MAZE_SIZE * CELL_SIZE, MAZE_SIZE * CELL_SIZE);
+    const material = new THREE.MeshPhongMaterial({ map: texture });
+    const floor = new THREE.Mesh(geometry, material);
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+}
+
+function createFloorTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#654321';
+    ctx.fillRect(0, 0, 512, 512);
+    ctx.strokeStyle = '#444444';
+    ctx.lineWidth = 2;
+    
+    for(let i = 0; i <= 512; i += 32) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, 512);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, i);
+        ctx.lineTo(512, i);
+        ctx.stroke();
+    }
+    
+    return new THREE.CanvasTexture(canvas);
+}
+
+function createWallTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, 256, 256);
+    
+    // Random patterns
+    ctx.fillStyle = '#666666';
+    for(let i = 0; i < 50; i++) {
+        ctx.fillRect(
+            Math.random() * 256,
+            Math.random() * 256,
+            Math.random() * 20,
+            Math.random() * 20
+        );
+    }
+    
+    return new THREE.CanvasTexture(canvas);
+}
+
+function handleMovement(delta) {
+    if(!soldier) return;
+
+    const speed = 5 * delta;
+    const moveDirection = new THREE.Vector3();
+
+    if(keyboard['w']) moveDirection.z -= 1;
+    if(keyboard['s']) moveDirection.z += 1;
+    if(keyboard['a']) moveDirection.x -= 1;
+    if(keyboard['d']) moveDirection.x += 1;
+
+    if(moveDirection.length() > 0) {
+        moveDirection.normalize();
+        const angle = Math.atan2(moveDirection.x, moveDirection.z) + Math.PI;
+        soldier.rotation.y = angle;
+        
+        if(currentAction !== runAction) {
+            fadeToAction(runAction, 0.2);
+        }
+        
+        // Collision detection
+        const newPos = soldier.position.clone().add(
+            moveDirection.multiplyScalar(speed)
+        );
+        
+        const collisionSphere = new THREE.Sphere(newPos, 1.5);
+        const collision = collisionBoxes.some(box => box.intersectsSphere(collisionSphere));
+        
+        if(!collision) {
+            soldier.position.copy(newPos);
+        }
+    } else {
+        if(currentAction !== idleAction) {
+            fadeToAction(idleAction, 0.2);
+        }
+    }
+}
+
+function fadeToAction(action, duration) {
+    currentAction.fadeOut(duration);
+    action.reset().fadeIn(duration).play();
+    currentAction = action;
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function updateDebugInfo() {
+    if(!soldier) return;
+    const pos = soldier.position;
+    const rot = soldier.rotation;
+    document.getElementById('debug').innerHTML = `
+        Position: ${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)}<br>
+        Rotation: ${rot.y.toFixed(2)}
+    `;
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    const delta = Math.min(0.05, clock.getDelta());
+    
+    if(mixer) mixer.update(delta);
+    handleMovement(delta);
+    controls.target.copy(soldier?.position || new THREE.Vector3());
+    controls.update();
+    updateDebugInfo();
+    renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
