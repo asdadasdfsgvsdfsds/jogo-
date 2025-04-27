@@ -1,251 +1,288 @@
-let score = 0;
-let gameActive = true;
-let player;
-let camera;
-let collectables = [];
-let obstacles = [];
-
-// Configuração da cena
-const scene = new THREE.Scene();
-const renderer = new THREE.WebGLRenderer();
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
-
-// Câmera
-camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 10, 20);
-camera.lookAt(0, 0, 0);
-
-// Iluminação
-const light = new THREE.PointLight(0xffffff, 1, 100);
-light.position.set(0, 10, 10);
-scene.add(light);
-scene.add(new THREE.AmbientLight(0x404040));
-
-// Jogador (Esfera)
-const playerGeometry = new THREE.SphereGeometry(1, 32, 32);
-const playerMaterial = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-player = new THREE.Mesh(playerGeometry, playerMaterial);
-scene.add(player);
-
-// Chão
-const floorGeometry = new THREE.PlaneGeometry(50, 50);
-const floorMaterial = new THREE.MeshPhongMaterial({ color: 0x808080, side: THREE.DoubleSide });
-const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-floor.rotation.x = Math.PI / 2;
-scene.add(floor);
-
-// Criar paredes
-function createWalls() {
-    const wallHeight = 5;
-    const wallThickness = 1;
-    const wallMaterial = new THREE.MeshPhongMaterial({ color: 0x606060 });
-
-    const walls = [
-        { x: 0, z: 25, w: 50, h: wallThickness }, // Norte
-        { x: 0, z: -25, w: 50, h: wallThickness }, // Sul
-        { x: 25, z: 0, w: wallThickness, h: 50 }, // Leste
-        { x: -25, z: 0, w: wallThickness, h: 50 } // Oeste
-    ];
-
-    walls.forEach(({ x, z, w, h }) => {
-        const wall = new THREE.Mesh(new THREE.BoxGeometry(w, wallHeight, h), wallMaterial);
-        wall.position.set(x, wallHeight / 2, z);
-        scene.add(wall);
-    });
+// Sistema de Login/Registro
+function applyTheme() {
+  const theme = localStorage.getItem('theme') || 'light';
+  document.body.classList.toggle('dark-mode', theme === 'dark');
 }
 
-createWalls();
-
-// Gerar colecionáveis
-function generateCollectable() {
-    const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshPhongMaterial({ color: 0xffd700 });
-    const cube = new THREE.Mesh(geometry, material);
-    
-    cube.position.x = (Math.random() - 0.5) * 40;
-    cube.position.z = (Math.random() - 0.5) * 40;
-    cube.position.y = 0.5;
-    
-    scene.add(cube);
-    collectables.push(cube);
+function toggleTheme() {
+  const newTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
+  localStorage.setItem('theme', newTheme);
+  applyTheme();
 }
 
-// Gerar obstáculos
-function generateObstacle() {
-    const geometry = new THREE.ConeGeometry(1, 2, 32);
-    const material = new THREE.MeshPhongMaterial({ color: 0xff0000 });
-    const cone = new THREE.Mesh(geometry, material);
-    
-    cone.position.x = (Math.random() - 0.5) * 40;
-    cone.position.z = (Math.random() - 0.5) * 40;
-    cone.position.y = 1;
-    
-    scene.add(cone);
-    obstacles.push(cone);
+function getUsers() {
+  return JSON.parse(localStorage.getItem('users')) || [];
 }
 
-// Controles
-const keys = {};
-window.addEventListener('keydown', (e) => keys[e.key] = true);
-window.addEventListener('keyup', (e) => keys[e.key] = false);
-
-// Detecção de colisão
-function checkCollision(obj1, obj2, distance = 2) {
-    return obj1.position.distanceTo(obj2.position) < distance;
+function saveUser(user) {
+  const users = getUsers();
+  users.push(user);
+  localStorage.setItem('users', JSON.stringify(users));
 }
 
-// Atualizar jogo
-function update() {
-    if (!gameActive) return;
-
-    // Movimentação
-    const speed = 0.1;
-    if (keys['w']) player.position.z -= speed;
-    if (keys['s']) player.position.z += speed;
-    if (keys['a']) player.position.x -= speed;
-    if (keys['d']) player.position.x += speed;
-
-    // Manter jogador dentro do cenário
-    player.position.x = THREE.MathUtils.clamp(player.position.x, -20, 20);
-    player.position.z = THREE.MathUtils.clamp(player.position.z, -20, 20);
-
-    // Atualizar posição da câmera
-    camera.position.set(player.position.x, 10, player.position.z + 20);
-    camera.lookAt(player.position);
-
-    // Verificar colisões com colecionáveis
-    collectables.forEach((collectable, index) => {
-        collectable.rotation.y += 0.02;
-        
-        if (checkCollision(player, collectable)) {
-            scene.remove(collectable);
-            collectables.splice(index, 1);
-            score += 10;
-            document.getElementById('score').textContent = `Pontuação: ${score}`;
-            generateCollectable();
-        }
-    });
-
-    // Verificar colisões com obstáculos
-    obstacles.forEach(obstacle => {
-        if (checkCollision(player, obstacle)) {
-            gameActive = false;
-            document.getElementById('score').style.color = 'red';
-            document.getElementById('score').textContent += ' - FIM DE JOGO!';
-        }
-    });
+function isLoggedIn() {
+  return localStorage.getItem('loggedIn') === 'true';
 }
 
-// Loop do jogo
-function animate() {
-    requestAnimationFrame(animate);
-    update();
-    renderer.render(scene, camera);
-}
-// Array para armazenar direções dos obstáculos móveis
-let obstacleDirections = [];
-
-// Gerar obstáculos móveis
-function generateObstacle() {
-    const geometry = new THREE.ConeGeometry(1, 2, 32);
-    const material = new THREE.MeshPhongMaterial({ color: 0xff0000 });
-    const cone = new THREE.Mesh(geometry, material);
-    
-    // Definir posição inicial
-    cone.position.x = (Math.random() - 0.5) * 40;
-    cone.position.z = (Math.random() - 0.5) * 40;
-    cone.position.y = 1;
-    
-    scene.add(cone);
-    obstacles.push(cone);
-
-    // Criar um vetor de direção aleatória
-    const direction = new THREE.Vector2(
-        (Math.random() - 0.5) * 0.2, // Direção X
-        (Math.random() - 0.5) * 0.2  // Direção Z
-    );
-    
-    obstacleDirections.push(direction);
+function getCurrentUsername() {
+  return localStorage.getItem('currentUser');
 }
 
-// Atualizar obstáculos móveis
-function updateObstacles() {
-    obstacles.forEach((obstacle, index) => {
-        let direction = obstacleDirections[index];
-
-        // Mover o obstáculo
-        obstacle.position.x += direction.x;
-        obstacle.position.z += direction.y;
-
-        // Verificar se chegou na borda e inverter direção
-        if (obstacle.position.x < -20 || obstacle.position.x > 20) {
-            direction.x *= -1; // Inverte a direção X
-        }
-        if (obstacle.position.z < -20 || obstacle.position.z > 20) {
-            direction.y *= -1; // Inverte a direção Z
-        }
-    });
+// Autenticação
+function renderLogin() {
+  document.getElementById('app').innerHTML = `
+    <div class="auth-container">
+      <h2>Login</h2>
+      <input type="text" id="loginUsername" placeholder="Usuário" required>
+      <input type="password" id="loginPassword" placeholder="Senha" required>
+      <button onclick="login()">Entrar</button>
+      <button class="toggle-btn" onclick="renderRegister()">Cadastrar-se</button>
+    </div>
+  `;
+  applyTheme();
 }
 
-// Atualizar jogo
-function update() {
-    if (!gameActive) return;
-
-    // Movimentação do jogador
-    const speed = 0.1;
-    if (keys['w']) player.position.z -= speed;
-    if (keys['s']) player.position.z += speed;
-    if (keys['a']) player.position.x -= speed;
-    if (keys['d']) player.position.x += speed;
-
-    // Manter jogador dentro do cenário
-    player.position.x = THREE.MathUtils.clamp(player.position.x, -20, 20);
-    player.position.z = THREE.MathUtils.clamp(player.position.z, -20, 20);
-
-    // Atualizar posição da câmera
-    camera.position.set(player.position.x, 10, player.position.z + 20);
-    camera.lookAt(player.position);
-
-    // Atualizar obstáculos móveis
-    updateObstacles();
-
-    // Verificar colisões com colecionáveis
-    collectables.forEach((collectable, index) => {
-        collectable.rotation.y += 0.02;
-        
-        if (checkCollision(player, collectable)) {
-            scene.remove(collectable);
-            collectables.splice(index, 1);
-            score += 10;
-            document.getElementById('score').textContent = `Pontuação: ${score}`;
-            generateCollectable();
-        }
-    });
-
-    // Verificar colisões com obstáculos
-    obstacles.forEach(obstacle => {
-        if (checkCollision(player, obstacle)) {
-            gameActive = false;
-            document.getElementById('score').style.color = 'red';
-            document.getElementById('score').textContent += ' - FIM DE JOGO!';
-        }
-    });
+function renderRegister() {
+  document.getElementById('app').innerHTML = `
+    <div class="auth-container">
+      <h2>Cadastro</h2>
+      <input type="text" id="registerUsername" placeholder="Novo usuário" required>
+      <input type="password" id="registerPassword" placeholder="Nova senha" required>
+      <button onclick="register()">Cadastrar</button>
+      <button class="toggle-btn" onclick="renderLogin()">Voltar ao Login</button>
+    </div>
+  `;
+  applyTheme();
 }
 
-// Criar obstáculos móveis
-generateObstacle();
-generateObstacle();
+function register() {
+  const username = document.getElementById('registerUsername').value.trim();
+  const password = document.getElementById('registerPassword').value.trim();
+  if (!username || !password) { alert('Preencha todos os campos!'); return; }
+  const users = getUsers();
+  if (users.some(u => u.username === username)) {
+    alert('Usuário já existe!');
+  } else {
+    saveUser({ username, password });
+    alert('Cadastro realizado com sucesso!');
+    renderLogin();
+  }
+}
 
-// Iniciar jogo
-generateCollectable();
-generateCollectable();
-generateObstacle();
-animate();
+function login() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value.trim();
+  const users = getUsers();
+  const validUser = users.find(u => u.username === username && u.password === password);
+  if (validUser) {
+    localStorage.setItem('loggedIn', 'true');
+    localStorage.setItem('currentUser', username);
+    renderNotebookApp();
+  } else {
+    alert('Usuário ou senha incorretos!');
+  }
+}
 
-// Redimensionar janela
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-});
+function logout() {
+  localStorage.removeItem('loggedIn');
+  localStorage.removeItem('currentUser');
+  renderLogin();
+}
+
+// Sistema de Notas
+let notes = [];
+
+function getUserNotesKey() {
+  return `notes_${getCurrentUsername()}`;
+}
+
+function loadNotes() {
+  return JSON.parse(localStorage.getItem(getUserNotesKey())) || [];
+}
+
+function saveNotes() {
+  localStorage.setItem(getUserNotesKey(), JSON.stringify(notes));
+}
+
+function createNewNote() {
+  notes.push({ id: Date.now(), title: '', content: '', lastEdited: Date.now() });
+  saveNotes();
+  renderNotes();
+}
+
+function extractYouTubeVideoId(url) {
+  const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+  const match = url.match(regex);
+  return match ? match[1] : null;
+}
+
+function createVideoNote() {
+  const url = prompt('Cole o link do vídeo do YouTube:');
+  if (!url) return;
+  const videoId = extractYouTubeVideoId(url);
+  if (videoId) {
+    notes.push({ id: Date.now(), videoUrl: `https://www.youtube.com/embed/${videoId}`, lastEdited: Date.now() });
+    saveNotes();
+    renderNotes();
+  } else {
+    alert('Link inválido de YouTube.');
+  }
+}
+
+function createPdfNote() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'application/pdf';
+  
+  input.onchange = function(e) {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const pdfData = e.target.result;
+        notes.push({
+          id: Date.now(),
+          type: 'pdf',
+          pdfUrl: pdfData,
+          title: file.name,
+          lastEdited: Date.now()
+        });
+        saveNotes();
+        renderNotes();
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+  
+  input.click();
+}
+
+function deleteNote(id) {
+  notes = notes.filter(n => n.id !== id);
+  saveNotes();
+  renderNotes();
+}
+
+function updateNote(id, field, value) {
+  const note = notes.find(n => n.id === id);
+  if (note) {
+    note[field] = value;
+    note.lastEdited = Date.now();
+    saveNotes();
+  }
+}
+
+function formatDateTime(ts) {
+  return new Date(ts).toLocaleString('pt-BR');
+}
+
+// Voz
+function startVoiceInput(noteId) {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) { alert('Reconhecimento de voz não suportado neste navegador'); return; }
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'pt-BR';
+  recognition.start();
+  recognition.onresult = e => {
+    const texto = e.results[0][0].transcript;
+    updateNote(noteId, 'content', notes.find(n => n.id === noteId).content + '\n' + texto);
+    renderNotes();
+  };
+}
+
+function readNoteText(noteId) {
+  const note = notes.find(n => n.id === noteId);
+  if (note?.content) {
+    const utter = new SpeechSynthesisUtterance(note.content);
+    utter.lang = 'pt-BR';
+    window.speechSynthesis.speak(utter);
+  }
+}
+
+// Renderização
+function renderNotes() {
+  const container = document.getElementById('notesContainer');
+  container.innerHTML = '';
+  notes.forEach(n => {
+    const noteEl = document.createElement('div');
+    noteEl.className = 'note';
+    if (n.videoUrl) {
+      noteEl.innerHTML = `
+        <iframe width="100%" height="200" src="${n.videoUrl}" frameborder="0" allowfullscreen></iframe>
+        <div class="note-date">${formatDateTime(n.lastEdited)}</div>
+        <button class="delete-btn" onclick="deleteNote(${n.id})">Apagar</button>
+      `;
+    } else if (n.audioUrl) {
+      noteEl.innerHTML = `
+        <audio id="audio_${n.id}" controls style="width:100%">
+          <source src="${n.audioUrl}" type="audio/webm">
+        </audio>
+        <div style="margin-top:10px">
+          <button onclick="playAudio(${n.id})">▶️ Play</button>
+          <button onclick="pauseAudio(${n.id})">⏸️ Pause</button>
+          <button onclick="speedUpAudio(${n.id})">⏩ Acelerar</button>
+        </div>
+        <div class="note-date">${formatDateTime(n.lastEdited)}</div>
+        <button class="delete-btn" onclick="deleteNote(${n.id})">Apagar</button>
+      `;
+    } else if (n.type === 'pdf') {
+      noteEl.innerHTML = `
+        <div class="pdf-note">
+          <h3>${n.title}</h3>
+          <iframe src="${n.pdfUrl}" type="application/pdf" width="100%" height="400px"></iframe>
+          <div class="note-date">${formatDateTime(n.lastEdited)}</div>
+          <button class="delete-btn" onclick="deleteNote(${n.id})">Apagar</button>
+          <button class="expand-btn" onclick="openPdfViewer('${n.pdfUrl}')">Expandir</button>
+        </div>
+      `;
+    } else {
+      noteEl.innerHTML = `
+        <input type="text" placeholder="Título..." value="${n.title}" oninput="updateNote(${n.id}, 'title', this.value)">
+        <textarea placeholder="Escreva algo..." oninput="updateNote(${n.id}, 'content', this.value)">${n.content}</textarea>
+        <div class="note-date">${formatDateTime(n.lastEdited)}</div>
+        <button class="read-btn" onclick="readNoteText(${n.id})">🔊</button>
+        <button class="voice-btn" onclick="startVoiceInput(${n.id})">🎤</button>
+        <button class="delete-btn" onclick="deleteNote(${n.id})">Apagar</button>
+      `;
+    }
+    container.appendChild(noteEl);
+  });
+}
+
+function renderNotebookApp() {
+  document.getElementById('app').innerHTML = `
+    <div class="container">
+      <div class="header">
+        <h1>MY NOTES </h1>
+      </div>
+      <div class="notes-container" id="notesContainer"></div>
+      <div class="dock">
+        <button class="toggle-theme-btn" onclick="toggleTheme()">🌙 / ☀️</button>
+        <button class="new-note-btn" onclick="createNewNote()">NOTA</button>
+        <button class="new-note-btn" onclick="createVideoNote()">VÍDEO</button>
+        <button class="new-note-btn" onclick="createPdfNote()">PDF</button>
+        <button class="logout-btn" onclick="logout()">SAIR</button>
+      </div>
+    </div>
+  `;
+  notes = loadNotes();
+  renderNotes();
+  applyTheme();
+}
+
+function openPdfViewer(pdfUrl) {
+  const viewer = document.createElement('div');
+  viewer.className = 'pdf-viewer-overlay';
+  viewer.innerHTML = `
+    <div class="pdf-viewer-container">
+      <button class="close-viewer" onclick="this.parentElement.parentElement.remove()">✕</button>
+      <iframe src="${pdfUrl}" type="application/pdf" width="100%" height="100%"></iframe>
+    </div>
+  `;
+  document.body.appendChild(viewer);
+}
+
+// Inicialização
+applyTheme();
+if (isLoggedIn()) renderNotebookApp();
+else renderLogin();
